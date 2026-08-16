@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  pv-cases:
+    # Build context is the repository root, not backend/, because the Dockerfile
+    # copies backend/pom.xml and backend/src separately to keep the dependency
+    # layer cacheable. A backend/ context could not see those paths.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pv-cases
+    ports:
+      - "8080:8080"
+
+    # JVM flags live in the environment rather than baked into an image layer,
+    # so heap size can be changed at `docker compose up` time without a rebuild.
+    # Note: this only takes effect if the image entrypoint expands $JAVA_OPTS.
+    # The current ENTRYPOINT is exec form (["java", "-jar", "app.jar"]), which
+    # performs no shell expansion, so this value is inert as things stand —
+    # either switch the entrypoint to shell form or use JAVA_TOOL_OPTIONS,
+    # which the JVM reads from the environment on its own.
+    environment:
+      - JAVA_OPTS=-Xmx512m
+
+    # wget rather than curl: it is guaranteed present in the runtime image, and
+    # --spider issues the request without writing the body to disk, so the check
+    # costs nothing but the round trip. /health also reports store contents, so
+    # an "up but empty" container is still reported healthy — liveness only.
+    #
+    # start_period of 40s covers JVM startup: container start, class loading,
+    # Spring context refresh and the case seeding all happen before the first
+    # port bind. Failures during this window are not counted against `retries`,
+    # so a slow cold start on a loaded host cannot mark the service unhealthy.
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Restarts the container after a crash or a host/daemon reboot, but stays
+    # down after an explicit `docker compose stop` or `down` — so recovery is
+    # automatic while a deliberate shutdown is respected.
+    restart: unless-stopped
