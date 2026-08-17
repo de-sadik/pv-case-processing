@@ -14,13 +14,15 @@ services:
 
     # JVM flags live in the environment rather than baked into an image layer,
     # so heap size can be changed at `docker compose up` time without a rebuild.
-    # Note: this only takes effect if the image entrypoint expands $JAVA_OPTS.
-    # The current ENTRYPOINT is exec form (["java", "-jar", "app.jar"]), which
-    # performs no shell expansion, so this value is inert as things stand —
-    # either switch the entrypoint to shell form or use JAVA_TOOL_OPTIONS,
-    # which the JVM reads from the environment on its own.
+    #
+    # JAVA_TOOL_OPTIONS rather than JAVA_OPTS: the JVM reads this variable itself
+    # during startup, so it applies through the exec-form ENTRYPOINT
+    # (["java", "-jar", "app.jar"]), which runs no shell and would never expand a
+    # $JAVA_OPTS reference. The JVM acknowledges it on stderr at boot with
+    # "Picked up JAVA_TOOL_OPTIONS: ..." — if that line is missing from the logs,
+    # the setting is not in effect.
     environment:
-      - JAVA_OPTS=-Xmx512m
+      - JAVA_TOOL_OPTIONS=-Xmx512m
 
     # wget rather than curl: it is guaranteed present in the runtime image, and
     # --spider issues the request without writing the body to disk, so the check
